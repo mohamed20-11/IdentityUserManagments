@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
+
 namespace DevCreedUserManagments.Controllers
 {
     [Authorize(Roles ="Admin")]
@@ -53,6 +54,84 @@ namespace DevCreedUserManagments.Controllers
                 }).ToList()
             };
             return View(viewModel);
+        }
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult>ManageRoles(UsersRolesViewModel model)
+        {
+            var user = await _userManager.FindByIdAsync(model.UserId);
+            if(user==null)
+            {
+                return NotFound();
+            }
+            var userRoles = await _userManager.GetRolesAsync(user);
+            foreach(var role in model.Roles)
+            {
+                if(userRoles.Any(r => r == role.RoleName) && !role.IsSelected)
+                {
+                    await _userManager.RemoveFromRoleAsync(user, role.RoleName);
+                }
+
+                if (!userRoles.Any(r => r == role.RoleName) && role.IsSelected)
+                {
+                    await _userManager.AddToRoleAsync(user, role.RoleName);
+                }
+
+            }
+            return RedirectToAction(nameof(Index));
+        }
+        public async Task<IActionResult> Add()
+        {
+            var roles=await _roleManager.Roles.Select(r=> new RoleViewModel {RoleId=r.Id , RoleName=r.Name }).ToListAsync();
+            var viewModel = new AddUsersViewModel
+            {
+                Roles = roles
+            };
+            return View(viewModel);
+        }
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> Add(AddUsersViewModel model)
+        {
+           if(!ModelState.IsValid)
+            {
+                return View(model);
+            }
+           if(model.Roles.Any(r=>r.IsSelected)==false)
+            {
+                ModelState.AddModelError("Roles", "Please Select One Role At Least");
+                return View(model);
+            }
+           if(await _userManager.FindByEmailAsync(model.Email) != null)
+            {
+                ModelState.AddModelError("Email", "Email Exists Already");
+                return View(model);
+            }
+            if (await _userManager.FindByNameAsync(model.UserName) != null)
+            {
+                ModelState.AddModelError("UserName", "UserName Exists Already");
+                return View(model);
+            }
+            var user = new ApplicationUser
+            {
+                UserName = model.UserName,
+                Email = model.Email,
+                FirstName = model.FirstName,
+                LastName = model.LastName
+            };
+            var result = await _userManager.CreateAsync(user, model.Password);
+            if (!result.Succeeded)
+            {
+                foreach (var error in result.Errors)
+                {
+                    ModelState.AddModelError("Roles", error.Description);
+                }
+                return View(model);
+            }
+           
+                await _userManager.AddToRolesAsync(user, model.Roles.Where(r => r.IsSelected).Select(r => r.RoleName));
+                return RedirectToAction(nameof(Index));
+            
         }
     }
 }
